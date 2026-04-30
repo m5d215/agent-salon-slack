@@ -4,7 +4,7 @@ use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
 use safety::{Classification, Classifier};
 use serde::{Deserialize, Serialize};
 use slack_morphism::prelude::*;
-use std::{collections::HashMap, net::SocketAddr, sync::Arc, sync::OnceLock, time::Duration};
+use std::{collections::HashMap, sync::Arc, sync::OnceLock, time::Duration};
 use tokio::net::TcpListener;
 use tracing::{error, info, warn};
 
@@ -15,7 +15,8 @@ struct Config {
     salon_notify_url: String,
     salon_label: String,
     salon_target: String,
-    http_addr: SocketAddr,
+    http_bind: String,
+    http_port: u16,
     ollama_url: String,
     ollama_model: String,
     injection_block_threshold: f64,
@@ -37,6 +38,7 @@ impl Config {
         let port: u16 = opt_or("AGENT_SALON_SLACK_HTTP_PORT", "8765")
             .parse()
             .map_err(|e| format!("AGENT_SALON_SLACK_HTTP_PORT: {e}"))?;
+        let http_bind = opt_or("AGENT_SALON_SLACK_HTTP_BIND", "127.0.0.1");
         let ollama_url = opt_or("OLLAMA_URL", "http://localhost:11434");
         let ollama_model = opt_or("OLLAMA_MODEL", "llama-guard3:1b");
         let injection_block_threshold: f64 = opt_or("INJECTION_BLOCK_THRESHOLD", "0.7")
@@ -54,7 +56,8 @@ impl Config {
             salon_notify_url,
             salon_label,
             salon_target,
-            http_addr: SocketAddr::from(([127, 0, 0, 1], port)),
+            http_bind,
+            http_port: port,
             ollama_url,
             ollama_model,
             injection_block_threshold,
@@ -526,14 +529,21 @@ async fn post_handler(
 }
 
 async fn run_http_server(state: SharedState) {
-    let addr = state.config.http_addr;
+    let bind = state.config.http_bind.clone();
+    let port = state.config.http_port;
     let app = Router::new()
         .route("/post", post(post_handler))
         .with_state(state);
-    let listener = TcpListener::bind(addr).await.expect("bind http");
+    let listener = TcpListener::bind((bind.as_str(), port))
+        .await
+        .expect("bind http");
+    let local_addr = listener
+        .local_addr()
+        .map(|a| a.to_string())
+        .unwrap_or_else(|_| format!("{bind}:{port}"));
     info!(
         kind = "startup.http_listening",
-        addr = %addr,
+        addr = %local_addr,
         "http server listening"
     );
     axum::serve(listener, app).await.expect("http serve");
