@@ -1,6 +1,6 @@
 [package]
 name = "agent-salon-slack"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT"
 description = "A bridge between Slack and Claude Code sessions via agent-salon"
