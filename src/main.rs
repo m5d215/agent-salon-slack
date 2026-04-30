@@ -4,7 +4,7 @@ use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
 use safety::{Classification, Classifier};
 use serde::{Deserialize, Serialize};
 use slack_morphism::prelude::*;
-use std::{net::SocketAddr, sync::Arc, sync::OnceLock, time::Duration};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc, sync::OnceLock, time::Duration};
 use tokio::net::TcpListener;
 use tracing::{error, info, warn};
 
@@ -24,28 +24,28 @@ struct Config {
 }
 
 impl Config {
-    fn from_env() -> Result<Self, String> {
-        let env = |k: &str| std::env::var(k).map_err(|e| format!("{k}: {e}"));
-        let env_or = |k: &str, default: &str| {
-            std::env::var(k).unwrap_or_else(|_| default.to_string())
+    fn resolve(file: &HashMap<String, String>) -> Result<Self, String> {
+        let req = |k: &str| cfg_var(file, k).ok_or_else(|| format!("{k}: not set"));
+        let opt_or = |k: &str, default: &str| {
+            cfg_var(file, k).unwrap_or_else(|| default.to_string())
         };
-        let bot = env("SLACK_BOT_TOKEN")?;
-        let app = env("SLACK_APP_TOKEN")?;
-        let salon_notify_url = env("AGENT_SALON_URL")?;
-        let salon_label = env("AGENT_SALON_LABEL")?;
-        let salon_target = env("AGENT_SALON_TARGET")?;
-        let port: u16 = env_or("AGENT_SALON_SLACK_HTTP_PORT", "8765")
+        let bot = req("SLACK_BOT_TOKEN")?;
+        let app = req("SLACK_APP_TOKEN")?;
+        let salon_notify_url = req("AGENT_SALON_URL")?;
+        let salon_label = req("AGENT_SALON_LABEL")?;
+        let salon_target = req("AGENT_SALON_TARGET")?;
+        let port: u16 = opt_or("AGENT_SALON_SLACK_HTTP_PORT", "8765")
             .parse()
             .map_err(|e| format!("AGENT_SALON_SLACK_HTTP_PORT: {e}"))?;
-        let ollama_url = env_or("OLLAMA_URL", "http://localhost:11434");
-        let ollama_model = env_or("OLLAMA_MODEL", "llama-guard3:1b");
-        let injection_block_threshold: f64 = env_or("INJECTION_BLOCK_THRESHOLD", "0.7")
+        let ollama_url = opt_or("OLLAMA_URL", "http://localhost:11434");
+        let ollama_model = opt_or("OLLAMA_MODEL", "llama-guard3:1b");
+        let injection_block_threshold: f64 = opt_or("INJECTION_BLOCK_THRESHOLD", "0.7")
             .parse()
             .map_err(|e| format!("INJECTION_BLOCK_THRESHOLD: {e}"))?;
-        let injection_warn_threshold: f64 = env_or("INJECTION_WARN_THRESHOLD", "0.5")
+        let injection_warn_threshold: f64 = opt_or("INJECTION_WARN_THRESHOLD", "0.5")
             .parse()
             .map_err(|e| format!("INJECTION_WARN_THRESHOLD: {e}"))?;
-        let injection_timeout_secs: u64 = env_or("INJECTION_TIMEOUT_SECS", "30")
+        let injection_timeout_secs: u64 = opt_or("INJECTION_TIMEOUT_SECS", "30")
             .parse()
             .map_err(|e| format!("INJECTION_TIMEOUT_SECS: {e}"))?;
         Ok(Self {
@@ -61,6 +61,98 @@ impl Config {
             injection_warn_threshold,
             injection_timeout: Duration::from_secs(injection_timeout_secs),
         })
+    }
+}
+
+/// Resolve a config value, preferring the live process environment over
+/// any value loaded from the config file.
+fn cfg_var(file: &HashMap<String, String>, key: &str) -> Option<String> {
+    std::env::var(key).ok().or_else(|| file.get(key).cloned())
+}
+
+/// Read `AGENT_SALON_SLACK_CONFIG` and parse the file at that path.
+/// Returns an empty map when the env var is unset (no config file used)
+/// or when the file is missing. The path is exposed via env so platform
+/// installers (e.g. the Homebrew formula) can point at
+/// `${HOMEBREW_PREFIX}/etc/agent-salon-slack.conf` without code changes.
+fn load_config_file() -> HashMap<String, String> {
+    let Ok(path) = std::env::var("AGENT_SALON_SLACK_CONFIG") else {
+        return HashMap::new();
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(s) => {
+            let map = parse_config(&s);
+            info!(
+                kind = "startup.config_file_loaded",
+                path = %path,
+                count = map.len(),
+                "loaded settings from config file"
+            );
+            map
+        }
+        Err(e) => {
+            warn!(
+                kind = "startup.config_file_skipped",
+                path = %path,
+                error = %e,
+                "skipped config file"
+            );
+            HashMap::new()
+        }
+    }
+}
+
+/// Parse a `KEY=VALUE` config file. Lines starting with `#` and blank
+/// lines are skipped. Keys with no `=` are skipped. Surrounding double
+/// quotes around the value (`KEY="value"`) are stripped. Whitespace
+/// around the key and around the value (outside the quotes) is trimmed.
+fn parse_config(s: &str) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    for line in s.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        let k = k.trim();
+        if k.is_empty() {
+            continue;
+        }
+        let v = v.trim();
+        let v = if v.len() >= 2 && v.starts_with('"') && v.ends_with('"') {
+            &v[1..v.len() - 1]
+        } else {
+            v
+        };
+        out.insert(k.to_string(), v.to_string());
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_config_basics() {
+        let s = r#"
+# comment
+KEY=value
+QUOTED="double quoted"
+WITH_SPACES   =   spaced
+EMPTY_VALUE=
+=ignored_no_key
+no_equals_line
+"#;
+        let m = parse_config(s);
+        assert_eq!(m.get("KEY").map(String::as_str), Some("value"));
+        assert_eq!(m.get("QUOTED").map(String::as_str), Some("double quoted"));
+        assert_eq!(m.get("WITH_SPACES").map(String::as_str), Some("spaced"));
+        assert_eq!(m.get("EMPTY_VALUE").map(String::as_str), Some(""));
+        assert!(!m.contains_key(""));
+        assert!(!m.contains_key("no_equals_line"));
     }
 }
 
@@ -476,7 +568,8 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let config = Arc::new(Config::from_env()?);
+    let file = load_config_file();
+    let config = Arc::new(Config::resolve(&file)?);
     let slack_client = Arc::new(SlackClient::new(SlackClientHyperConnector::new()?));
     let http = reqwest::Client::new();
 
