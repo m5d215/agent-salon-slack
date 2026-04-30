@@ -46,6 +46,7 @@ cargo run
 | `AGENT_SALON_LABEL` | ✅ | This service's own label |
 | `AGENT_SALON_TARGET` | ✅ | Label of the receiving session |
 | `AGENT_SALON_SLACK_HTTP_PORT` | - | Default `8765` |
+| `AGENT_SALON_SLACK_HTTP_BIND` | - | Default `127.0.0.1`. Address to bind the `/post` listener to. Set to a Tailscale IP (or `0.0.0.0` if the network is already gated) to accept requests from other hosts. **`/post` is unauthenticated**, so anyone who can reach the port can post to Slack — keep the listener behind a trusted network. |
 | `OLLAMA_URL` | - | Default `http://localhost:11434` |
 | `OLLAMA_MODEL` | - | Default `llama-guard3:1b` |
 | `INJECTION_BLOCK_THRESHOLD` | - | Default `0.7`. Block at or above this score. |
