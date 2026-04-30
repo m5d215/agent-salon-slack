@@ -51,6 +51,7 @@ cargo run
 | `INJECTION_BLOCK_THRESHOLD` | - | Default `0.7`. Block at or above this score. |
 | `INJECTION_WARN_THRESHOLD` | - | Default `0.5`. Add suspicious annotation at or above this score. |
 | `INJECTION_TIMEOUT_SECS` | - | Default `30`. Timeout for Ollama / claude -p. |
+| `AGENT_SALON_SLACK_CONFIG` | - | Optional path to a `KEY=VALUE` config file. Lines starting with `#` and blank lines are ignored. The live process environment overrides any value from the file. Used by the Homebrew formula to point at `${HOMEBREW_PREFIX}/etc/agent-salon-slack.conf`. |
 | `RUST_LOG` | - | e.g. `agent_salon_slack=debug` |
 
 ## Architecture

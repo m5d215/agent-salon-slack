@@ -8,6 +8,8 @@
     { "$ref": "#/$defs/StartupClassifierReady" },
     { "$ref": "#/$defs/StartupSocketModeConnecting" },
     { "$ref": "#/$defs/StartupHttpListening" },
+    { "$ref": "#/$defs/StartupConfigFileLoaded" },
+    { "$ref": "#/$defs/StartupConfigFileSkipped" },
     { "$ref": "#/$defs/StartupFatal" },
     { "$ref": "#/$defs/SlackEventReceived" },
     { "$ref": "#/$defs/SlackOtherEvent" },
@@ -117,6 +119,36 @@
         "addr": { "type": "string", "description": "Bound address, e.g. 127.0.0.1:8765." }
       },
       "required": ["addr"],
+      "unevaluatedProperties": false
+    },
+
+    "StartupConfigFileLoaded": {
+      "title": "startup.config_file_loaded",
+      "description": "Settings were loaded from the file pointed at by AGENT_SALON_SLACK_CONFIG.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "loaded settings from config file" },
+        "kind": { "const": "startup.config_file_loaded" },
+        "path": { "type": "string", "description": "Filesystem path that was read." },
+        "count": { "type": "integer", "minimum": 0, "description": "Number of KEY=VALUE entries parsed." }
+      },
+      "required": ["path", "count"],
+      "unevaluatedProperties": false
+    },
+
+    "StartupConfigFileSkipped": {
+      "title": "startup.config_file_skipped",
+      "description": "AGENT_SALON_SLACK_CONFIG was set but the file could not be read; startup proceeds with env vars only.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "WARN" },
+        "message": { "const": "skipped config file" },
+        "kind": { "const": "startup.config_file_skipped" },
+        "path": { "type": "string", "description": "Filesystem path that was attempted." },
+        "error": { "type": "string", "description": "Display repr of the std::io::Error." }
+      },
+      "required": ["path", "error"],
       "unevaluatedProperties": false
     },
 
