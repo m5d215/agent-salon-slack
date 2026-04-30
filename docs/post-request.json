@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "post-request.json",
+  "title": "PostRequest",
+  "description": "Body of the POST /post request accepted by agent-salon-slack.",
+  "type": "object",
+  "required": ["channel", "text"],
+  "additionalProperties": false,
+  "properties": {
+    "channel": {
+      "type": "string",
+      "description": "Slack channel ID, e.g. \"C0123456789\"."
+    },
+    "thread_ts": {
+      "type": "string",
+      "description": "When present, reply inside the thread; otherwise post as a new top-level message."
+    },
+    "text": {
+      "type": "string"
+    }
+  }
+}

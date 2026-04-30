@@ -1,0 +1,444 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "log-line.json",
+  "title": "LogLine",
+  "description": "One line of the JSONL stream emitted by agent-salon-slack on stdout. Every line carries a `kind` discriminator that selects one of the variants below. Fields are flattened (tracing_subscriber::fmt().json().flatten_event(true)).",
+  "oneOf": [
+    { "$ref": "#/$defs/StartupAuthTestOk" },
+    { "$ref": "#/$defs/StartupClassifierReady" },
+    { "$ref": "#/$defs/StartupSocketModeConnecting" },
+    { "$ref": "#/$defs/StartupHttpListening" },
+    { "$ref": "#/$defs/StartupFatal" },
+    { "$ref": "#/$defs/SlackEventReceived" },
+    { "$ref": "#/$defs/SlackOtherEvent" },
+    { "$ref": "#/$defs/SlackMessageDropped" },
+    { "$ref": "#/$defs/SlackMessageBlocked" },
+    { "$ref": "#/$defs/SlackAlertFailed" },
+    { "$ref": "#/$defs/SlackMessagePosted" },
+    { "$ref": "#/$defs/SlackPostFailed" },
+    { "$ref": "#/$defs/SafetyClassified" },
+    { "$ref": "#/$defs/SalonForwarded" },
+    { "$ref": "#/$defs/SalonForwardFailed" },
+    { "$ref": "#/$defs/PostRequested" },
+    { "$ref": "#/$defs/CallbackError" },
+    { "$ref": "#/$defs/InternalSharedStateUninitialized" },
+    { "$ref": "#/$defs/InternalPanic" },
+    { "$ref": "#/$defs/InternalListenerEnded" },
+    { "$ref": "#/$defs/InternalHttpTaskEnded" }
+  ],
+  "$defs": {
+    "Base": {
+      "type": "object",
+      "required": ["timestamp", "level", "target", "message", "kind"],
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "description": "RFC3339 timestamp emitted by tracing_subscriber."
+        },
+        "level": {
+          "type": "string",
+          "enum": ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]
+        },
+        "target": {
+          "type": "string",
+          "description": "Tracing event target — \"agent_salon_slack\" for events emitted by this crate."
+        },
+        "message": { "type": "string" },
+        "kind": { "type": "string" }
+      }
+    },
+
+    "StartupAuthTestOk": {
+      "title": "startup.auth_test_ok",
+      "description": "Slack auth.test succeeded at startup.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "auth test ok" },
+        "kind": { "const": "startup.auth_test_ok" },
+        "user_id": { "type": "string" },
+        "bot_id": {
+          "type": "string",
+          "description": "Empty when the workspace did not return a bot_id."
+        },
+        "team": { "type": "string" }
+      },
+      "required": ["user_id", "bot_id", "team"],
+      "unevaluatedProperties": false
+    },
+
+    "StartupClassifierReady": {
+      "title": "startup.classifier_ready",
+      "description": "Prompt-injection classifier finished initialising.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "classifier ready" },
+        "kind": { "const": "startup.classifier_ready" },
+        "ollama_url": { "type": "string" },
+        "ollama_model": { "type": "string" },
+        "block_threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+        "warn_threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+        "timeout_secs": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "ollama_url",
+        "ollama_model",
+        "block_threshold",
+        "warn_threshold",
+        "timeout_secs"
+      ],
+      "unevaluatedProperties": false
+    },
+
+    "StartupSocketModeConnecting": {
+      "title": "startup.socket_mode_connecting",
+      "description": "About to open the Slack Socket Mode connection.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "connecting via socket mode" },
+        "kind": { "const": "startup.socket_mode_connecting" },
+        "label": { "type": "string", "description": "= AGENT_SALON_LABEL." },
+        "target": { "type": "string", "description": "= AGENT_SALON_TARGET." }
+      },
+      "required": ["label", "target"],
+      "unevaluatedProperties": false
+    },
+
+    "StartupHttpListening": {
+      "title": "startup.http_listening",
+      "description": "Local HTTP listener bound and serving /post.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "http server listening" },
+        "kind": { "const": "startup.http_listening" },
+        "addr": { "type": "string", "description": "Bound address, e.g. 127.0.0.1:8765." }
+      },
+      "required": ["addr"],
+      "unevaluatedProperties": false
+    },
+
+    "StartupFatal": {
+      "title": "startup.fatal",
+      "description": "Startup failed before the main loop began.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "ERROR" },
+        "message": { "const": "startup failed" },
+        "kind": { "const": "startup.fatal" },
+        "error": { "type": "string", "description": "Debug repr of the originating error." }
+      },
+      "required": ["error"],
+      "unevaluatedProperties": false
+    },
+
+    "SlackEventReceived": {
+      "title": "slack.event_received",
+      "description": "An inbound Slack message event was observed (logged before triage).",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "slack message event received" },
+        "kind": { "const": "slack.event_received" },
+        "channel": { "type": "string" },
+        "user": {
+          "type": "string",
+          "description": "Slack user ID. Empty when the sender lacked one."
+        },
+        "bot_id": {
+          "type": "string",
+          "description": "Slack bot ID. Empty when the sender was a regular user."
+        },
+        "ts": { "type": "string" },
+        "thread_ts": {
+          "type": "string",
+          "description": "Empty when the message was top-level."
+        },
+        "subtype": {
+          "type": "string",
+          "description": "Debug repr of the message subtype, or empty when none."
+        },
+        "text": { "type": "string" }
+      },
+      "required": [
+        "channel",
+        "user",
+        "bot_id",
+        "ts",
+        "thread_ts",
+        "subtype",
+        "text"
+      ],
+      "unevaluatedProperties": false
+    },
+
+    "SlackOtherEvent": {
+      "title": "slack.other_event",
+      "description": "An inbound Slack event other than `message` was observed.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "non-message slack event received" },
+        "kind": { "const": "slack.other_event" },
+        "event": {
+          "type": "string",
+          "description": "Debug repr of the raw slack-morphism event body."
+        }
+      },
+      "required": ["event"],
+      "unevaluatedProperties": false
+    },
+
+    "SlackMessageDropped": {
+      "title": "slack.message_dropped",
+      "description": "An inbound message was dropped at triage and not forwarded.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "slack message dropped at triage" },
+        "kind": { "const": "slack.message_dropped" },
+        "channel": { "type": "string" },
+        "ts": { "type": "string" },
+        "subtype": { "type": "string" }
+      },
+      "required": ["channel", "ts", "subtype"],
+      "unevaluatedProperties": false
+    },
+
+    "SlackMessageBlocked": {
+      "title": "slack.message_blocked",
+      "description": "An inbound message was blocked by the prompt-injection classifier and not forwarded.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "WARN" },
+        "message": { "const": "slack message blocked by safety classifier" },
+        "kind": { "const": "slack.message_blocked" },
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "label": {
+          "type": "string",
+          "enum": ["safe", "suspicious", "malicious", "unknown"]
+        },
+        "model": { "type": "string" },
+        "fallback": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "channel": { "type": "string" },
+        "user": { "type": "string" },
+        "bot_id": { "type": "string" },
+        "username": { "type": "string" },
+        "ts": { "type": "string" },
+        "thread_ts": { "type": "string" },
+        "reply_thread_ts": { "type": "string" },
+        "text": { "type": "string" }
+      },
+      "required": [
+        "score",
+        "label",
+        "model",
+        "fallback",
+        "reason",
+        "channel",
+        "user",
+        "bot_id",
+        "username",
+        "ts",
+        "thread_ts",
+        "reply_thread_ts",
+        "text"
+      ],
+      "unevaluatedProperties": false
+    },
+
+    "SlackAlertFailed": {
+      "title": "slack.alert_failed",
+      "description": "Posting the in-thread \"prompt injection detected\" alert failed.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "WARN" },
+        "message": { "const": "failed to post safety alert" },
+        "kind": { "const": "slack.alert_failed" },
+        "error": { "type": "string" }
+      },
+      "required": ["error"],
+      "unevaluatedProperties": false
+    },
+
+    "SlackMessagePosted": {
+      "title": "slack.message_posted",
+      "description": "An outbound message requested via /post was posted to Slack.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "posted to slack" },
+        "kind": { "const": "slack.message_posted" },
+        "channel": { "type": "string" },
+        "thread_ts": { "type": "string" }
+      },
+      "required": ["channel", "thread_ts"],
+      "unevaluatedProperties": false
+    },
+
+    "SlackPostFailed": {
+      "title": "slack.post_failed",
+      "description": "Posting an outbound message to Slack via chat.postMessage failed.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "ERROR" },
+        "message": { "const": "chat.postMessage failed" },
+        "kind": { "const": "slack.post_failed" },
+        "channel": { "type": "string" },
+        "thread_ts": { "type": "string" },
+        "error": { "type": "string" }
+      },
+      "required": ["channel", "thread_ts", "error"],
+      "unevaluatedProperties": false
+    },
+
+    "SafetyClassified": {
+      "title": "safety.classified",
+      "description": "The classifier produced a verdict for an inbound message that passed triage. Always emitted, including for blocked messages (followed by `slack.message_blocked` in that case).",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "safety classification produced" },
+        "kind": { "const": "safety.classified" },
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "label": {
+          "type": "string",
+          "enum": ["safe", "suspicious", "malicious", "unknown"]
+        },
+        "model": { "type": "string" },
+        "fallback": { "type": "boolean" },
+        "reason": { "type": "string" }
+      },
+      "required": ["score", "label", "model", "fallback", "reason"],
+      "unevaluatedProperties": false
+    },
+
+    "SalonForwarded": {
+      "title": "salon.forwarded",
+      "description": "An inbound message was forwarded to agent-salon successfully.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "forwarded to agent-salon" },
+        "kind": { "const": "salon.forwarded" },
+        "target": { "type": "string" },
+        "url": { "type": "string" },
+        "content": {
+          "type": "string",
+          "description": "JSON-encoded SlackEvent (see slack-event.json)."
+        }
+      },
+      "required": ["target", "url", "content"],
+      "unevaluatedProperties": false
+    },
+
+    "SalonForwardFailed": {
+      "title": "salon.forward_failed",
+      "description": "Forwarding to agent-salon failed.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "WARN" },
+        "message": { "const": "failed to forward to agent-salon" },
+        "kind": { "const": "salon.forward_failed" },
+        "target": { "type": "string" },
+        "url": { "type": "string" },
+        "error": { "type": "string" }
+      },
+      "required": ["target", "url", "error"],
+      "unevaluatedProperties": false
+    },
+
+    "PostRequested": {
+      "title": "post.requested",
+      "description": "A POST /post request was received.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "post request received" },
+        "kind": { "const": "post.requested" },
+        "channel": { "type": "string" },
+        "thread_ts": { "type": "string" },
+        "text": { "type": "string" }
+      },
+      "required": ["channel", "thread_ts", "text"],
+      "unevaluatedProperties": false
+    },
+
+    "CallbackError": {
+      "title": "callback.error",
+      "description": "The Slack Socket Mode callback raised an error.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "ERROR" },
+        "message": { "const": "slack callback error" },
+        "kind": { "const": "callback.error" },
+        "error": { "type": "string" }
+      },
+      "required": ["error"],
+      "unevaluatedProperties": false
+    },
+
+    "InternalSharedStateUninitialized": {
+      "title": "internal.shared_state_uninitialized",
+      "description": "An inbound event arrived before the shared state was initialised. Should never fire.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "ERROR" },
+        "message": { "const": "shared state not initialized" },
+        "kind": { "const": "internal.shared_state_uninitialized" }
+      },
+      "required": [],
+      "unevaluatedProperties": false
+    },
+
+    "InternalPanic": {
+      "title": "internal.panic",
+      "description": "A panic was caught by the global panic hook.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "ERROR" },
+        "message": { "const": "panic" },
+        "kind": { "const": "internal.panic" },
+        "info": {
+          "type": "string",
+          "description": "Display repr of std::panic::PanicHookInfo."
+        }
+      },
+      "required": ["info"],
+      "unevaluatedProperties": false
+    },
+
+    "InternalListenerEnded": {
+      "title": "internal.listener_ended",
+      "description": "The Slack Socket Mode listener future returned. Treated as unexpected.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "WARN" },
+        "message": { "const": "slack socket-mode listener returned" },
+        "kind": { "const": "internal.listener_ended" }
+      },
+      "required": [],
+      "unevaluatedProperties": false
+    },
+
+    "InternalHttpTaskEnded": {
+      "title": "internal.http_task_ended",
+      "description": "The HTTP server task ended. Treated as unexpected.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "WARN" },
+        "message": { "const": "http server task ended" },
+        "kind": { "const": "internal.http_task_ended" },
+        "error": {
+          "type": "string",
+          "description": "Debug repr of the JoinHandle's Result."
+        }
+      },
+      "required": ["error"],
+      "unevaluatedProperties": false
+    }
+  }
+}

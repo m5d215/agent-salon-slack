@@ -1,0 +1,18 @@
+[package]
+name = "agent-salon-slack"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "A bridge between Slack and Claude Code sessions via agent-salon"
+repository = "https://github.com/m5d215/agent-salon-slack"
+authors = ["m5d215"]
+
+[dependencies]
+slack-morphism = { version = "2.20", features = ["hyper"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+axum = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

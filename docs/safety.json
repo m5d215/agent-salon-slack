@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "safety.json",
+  "title": "Safety",
+  "description": "Output of the prompt-injection classifier.",
+  "type": "object",
+  "required": ["score", "label", "model", "fallback", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "label": {
+      "type": "string",
+      "enum": ["safe", "suspicious", "malicious", "unknown"]
+    },
+    "model": {
+      "type": "string",
+      "description": "Identifier of the model that produced this verdict."
+    },
+    "fallback": {
+      "type": "boolean",
+      "description": "True when the claude -p fallback path produced this verdict instead of Ollama."
+    },
+    "reason": {
+      "type": ["string", "null"]
+    }
+  }
+}

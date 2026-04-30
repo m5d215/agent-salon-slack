@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "slack-event.json",
+  "title": "SlackEvent",
+  "description": "A Slack message event after triage, forwarded from agent-salon-slack to agent-salon.",
+  "type": "object",
+  "required": [
+    "event",
+    "channel",
+    "user",
+    "bot_id",
+    "username",
+    "ts",
+    "thread_ts",
+    "reply_thread_ts",
+    "text",
+    "safety"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "event": { "const": "message" },
+    "channel": { "type": "string" },
+    "user": { "type": ["string", "null"] },
+    "bot_id": { "type": ["string", "null"] },
+    "username": { "type": ["string", "null"] },
+    "ts": { "type": "string" },
+    "thread_ts": { "type": ["string", "null"] },
+    "reply_thread_ts": {
+      "type": "string",
+      "description": "thread_ts ?? ts — the ts to reply against."
+    },
+    "text": { "type": "string" },
+    "safety": {
+      "description": "Populated only when the warn threshold is crossed; null otherwise.",
+      "oneOf": [
+        { "$ref": "safety.json" },
+        { "type": "null" }
+      ]
+    }
+  }
+}

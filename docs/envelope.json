@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "envelope.json",
+  "title": "Envelope",
+  "description": "Body of the POST {AGENT_SALON_URL}?label={AGENT_SALON_LABEL} request.",
+  "type": "object",
+  "required": ["target", "content", "meta"],
+  "additionalProperties": false,
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "= AGENT_SALON_TARGET — the receiving session label."
+    },
+    "content": {
+      "type": "string",
+      "description": "JSON-encoded SlackEvent. Decoded value matches slack-event.json."
+    },
+    "meta": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "slack" }
+      }
+    }
+  }
+}

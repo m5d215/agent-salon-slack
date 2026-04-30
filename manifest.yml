@@ -1,0 +1,26 @@
+display_information:
+  name: agent-salon-slack
+  description: Bridges Slack and Claude Code sessions
+features:
+  bot_user:
+    display_name: agent-salon-slack
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - channels:history
+      - groups:history
+      - reactions:read
+      - reactions:write
+      - users:read
+      - files:read
+settings:
+  event_subscriptions:
+    bot_events:
+      - message.channels
+      - message.groups
+      - reaction_added
+      - reaction_removed
+  socket_mode_enabled: true
+  token_rotation_enabled: false
