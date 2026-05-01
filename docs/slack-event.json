@@ -2,40 +2,87 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "slack-event.json",
   "title": "SlackEvent",
-  "description": "A Slack message event after triage, forwarded from agent-salon-slack to agent-salon.",
-  "type": "object",
-  "required": [
-    "event",
-    "channel",
-    "user",
-    "bot_id",
-    "username",
-    "ts",
-    "thread_ts",
-    "reply_thread_ts",
-    "text",
-    "safety"
+  "description": "A Slack event after triage, forwarded from agent-salon-slack to agent-salon. Discriminated by `event`.",
+  "oneOf": [
+    { "$ref": "#/$defs/Message" },
+    { "$ref": "#/$defs/Reaction" }
   ],
-  "additionalProperties": false,
-  "properties": {
-    "event": { "const": "message" },
-    "channel": { "type": "string" },
-    "user": { "type": ["string", "null"] },
-    "bot_id": { "type": ["string", "null"] },
-    "username": { "type": ["string", "null"] },
-    "ts": { "type": "string" },
-    "thread_ts": { "type": ["string", "null"] },
-    "reply_thread_ts": {
-      "type": "string",
-      "description": "thread_ts ?? ts — the ts to reply against."
+  "$defs": {
+    "Message": {
+      "type": "object",
+      "required": [
+        "event",
+        "channel",
+        "user",
+        "bot_id",
+        "username",
+        "ts",
+        "thread_ts",
+        "reply_thread_ts",
+        "text",
+        "safety"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": { "const": "message" },
+        "channel": { "type": "string" },
+        "user": { "type": ["string", "null"] },
+        "bot_id": { "type": ["string", "null"] },
+        "username": { "type": ["string", "null"] },
+        "ts": { "type": "string" },
+        "thread_ts": { "type": ["string", "null"] },
+        "reply_thread_ts": {
+          "type": "string",
+          "description": "thread_ts ?? ts — the ts to reply against."
+        },
+        "text": { "type": "string" },
+        "safety": {
+          "description": "Populated only when the warn threshold is crossed; null otherwise.",
+          "oneOf": [
+            { "$ref": "safety.json" },
+            { "type": "null" }
+          ]
+        }
+      }
     },
-    "text": { "type": "string" },
-    "safety": {
-      "description": "Populated only when the warn threshold is crossed; null otherwise.",
-      "oneOf": [
-        { "$ref": "safety.json" },
-        { "type": "null" }
-      ]
+    "Reaction": {
+      "type": "object",
+      "required": [
+        "event",
+        "channel",
+        "user",
+        "reaction",
+        "item_type",
+        "item_user",
+        "item_ts",
+        "event_ts"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": { "enum": ["reaction_added", "reaction_removed"] },
+        "channel": {
+          "type": ["string", "null"],
+          "description": "Present when item_type is `message`; null for file reactions."
+        },
+        "user": {
+          "type": "string",
+          "description": "User who added or removed the reaction."
+        },
+        "reaction": {
+          "type": "string",
+          "description": "Emoji name (e.g. `thumbsup`), without colons."
+        },
+        "item_type": { "enum": ["message", "file"] },
+        "item_user": {
+          "type": ["string", "null"],
+          "description": "Author of the item being reacted to, when known."
+        },
+        "item_ts": {
+          "type": ["string", "null"],
+          "description": "ts of the message being reacted to; null for file reactions."
+        },
+        "event_ts": { "type": "string" }
+      }
     }
   }
 }

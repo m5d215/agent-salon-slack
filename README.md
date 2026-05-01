@@ -98,8 +98,10 @@ JSON Schemas live in [`docs/`](docs/).
 | Body | [`docs/envelope.json`](docs/envelope.json) |
 
 The `content` field of the envelope is a JSON-encoded
-[`SlackEvent`](docs/slack-event.json). `safety` is null unless the warn
-threshold is crossed.
+[`SlackEvent`](docs/slack-event.json), discriminated by `event` —
+`message` for chat messages, or `reaction_added` / `reaction_removed`
+for emoji reactions. For messages, `safety` is null unless the warn
+threshold is crossed; reactions skip safety classification.
 
 ## Prompt-injection detection
 
