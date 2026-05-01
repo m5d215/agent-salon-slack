@@ -90,6 +90,18 @@ JSON Schemas live in [`docs/`](docs/).
 | Body | [`docs/post-request.json`](docs/post-request.json) |
 | Response | `200 OK` on success; `500` with the error string on failure |
 
+### `POST /react` and `POST /unreact` — Claude Code session → agent-salon-slack
+
+| | |
+|---|---|
+| URL | `http://127.0.0.1:{AGENT_SALON_SLACK_HTTP_PORT}/react` (or `/unreact`) |
+| Body | [`docs/react-request.json`](docs/react-request.json) |
+| Response | `200 OK` on success; `500` with the error string on failure |
+
+`/react` calls `reactions.add`; `/unreact` calls `reactions.remove`. Both
+target a specific message (`channel` + `ts`); file reactions are not
+exposed.
+
 ### `POST /notify` — agent-salon-slack → agent-salon
 
 | | |

@@ -663,11 +663,100 @@ async fn post_handler(
     Ok(StatusCode::OK)
 }
 
+#[derive(Deserialize)]
+struct ReactRequest {
+    channel: String,
+    ts: String,
+    name: String,
+}
+
+async fn react_handler(
+    State(state): State<SharedState>,
+    Json(req): Json<ReactRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let channel = req.channel.clone();
+    let ts = req.ts.clone();
+    let name = req.name.clone();
+    info!(
+        kind = "react.requested",
+        channel = %channel,
+        ts = %ts,
+        name = %name,
+        "reactions.add request received"
+    );
+    let session = state.slack.open_session(&state.config.bot_token);
+    let api_req = SlackApiReactionsAddRequest::new(
+        SlackChannelId::from(req.channel),
+        SlackReactionName::from(req.name),
+        SlackTs::from(req.ts),
+    );
+    session.reactions_add(&api_req).await.map_err(|e| {
+        error!(
+            kind = "slack.react_failed",
+            channel = %channel,
+            ts = %ts,
+            name = %name,
+            error = %format!("{e:?}"),
+            "reactions.add failed"
+        );
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}"))
+    })?;
+    info!(
+        kind = "slack.reaction_added",
+        channel = %channel,
+        ts = %ts,
+        name = %name,
+        "reaction added"
+    );
+    Ok(StatusCode::OK)
+}
+
+async fn unreact_handler(
+    State(state): State<SharedState>,
+    Json(req): Json<ReactRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let channel = req.channel.clone();
+    let ts = req.ts.clone();
+    let name = req.name.clone();
+    info!(
+        kind = "unreact.requested",
+        channel = %channel,
+        ts = %ts,
+        name = %name,
+        "reactions.remove request received"
+    );
+    let session = state.slack.open_session(&state.config.bot_token);
+    let api_req = SlackApiReactionsRemoveRequest::new(SlackReactionName::from(req.name))
+        .with_channel(SlackChannelId::from(req.channel))
+        .with_timestamp(SlackTs::from(req.ts));
+    session.reactions_remove(&api_req).await.map_err(|e| {
+        error!(
+            kind = "slack.unreact_failed",
+            channel = %channel,
+            ts = %ts,
+            name = %name,
+            error = %format!("{e:?}"),
+            "reactions.remove failed"
+        );
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}"))
+    })?;
+    info!(
+        kind = "slack.reaction_removed",
+        channel = %channel,
+        ts = %ts,
+        name = %name,
+        "reaction removed"
+    );
+    Ok(StatusCode::OK)
+}
+
 async fn run_http_server(state: SharedState) {
     let bind = state.config.http_bind.clone();
     let port = state.config.http_port;
     let app = Router::new()
         .route("/post", post(post_handler))
+        .route("/react", post(react_handler))
+        .route("/unreact", post(unreact_handler))
         .with_state(state);
     let listener = TcpListener::bind((bind.as_str(), port))
         .await
