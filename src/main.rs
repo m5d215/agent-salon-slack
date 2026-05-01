@@ -27,9 +27,8 @@ struct Config {
 impl Config {
     fn resolve(file: &HashMap<String, String>) -> Result<Self, String> {
         let req = |k: &str| cfg_var(file, k).ok_or_else(|| format!("{k}: not set"));
-        let opt_or = |k: &str, default: &str| {
-            cfg_var(file, k).unwrap_or_else(|| default.to_string())
-        };
+        let opt_or =
+            |k: &str, default: &str| cfg_var(file, k).unwrap_or_else(|| default.to_string());
         let bot = req("SLACK_BOT_TOKEN")?;
         let app = req("SLACK_APP_TOKEN")?;
         let salon_notify_url = req("AGENT_SALON_URL")?;
@@ -165,6 +164,7 @@ struct SharedState {
     config: Arc<Config>,
     http: reqwest::Client,
     self_bot_id: Option<SlackBotId>,
+    self_user_id: Option<SlackUserId>,
     classifier: Arc<Classifier>,
 }
 
@@ -276,6 +276,68 @@ fn parse_message_event(
     })
 }
 
+/// Source-agnostic representation of a Slack reaction event.
+struct ParsedReaction {
+    event: &'static str,
+    channel: Option<String>,
+    user: String,
+    reaction: String,
+    item_type: &'static str,
+    item_user: Option<String>,
+    item_ts: Option<String>,
+    event_ts: String,
+}
+
+fn parse_reaction_event(
+    event: &'static str,
+    user: &SlackUserId,
+    reaction: &SlackReactionName,
+    item_user: Option<&SlackUserId>,
+    item: &SlackReactionsItem,
+    event_ts: &SlackTs,
+    self_user_id: Option<&SlackUserId>,
+) -> Option<ParsedReaction> {
+    // Drop reactions added/removed by ourselves to avoid feedback loops
+    // and to keep the salon stream free of our own bookkeeping.
+    if let Some(self_id) = self_user_id {
+        if user == self_id {
+            return None;
+        }
+    }
+    let (channel, item_type, item_ts) = match item {
+        SlackReactionsItem::Message(m) => (
+            m.origin.channel.as_ref().map(|c| c.to_string()),
+            "message",
+            Some(m.origin.ts.to_string()),
+        ),
+        SlackReactionsItem::File(_) => (None, "file", None),
+    };
+    Some(ParsedReaction {
+        event,
+        channel,
+        user: user.to_string(),
+        reaction: reaction.to_string(),
+        item_type,
+        item_user: item_user.map(|u| u.to_string()),
+        item_ts,
+        event_ts: event_ts.to_string(),
+    })
+}
+
+fn render_reaction_json(p: &ParsedReaction) -> String {
+    let value = serde_json::json!({
+        "event": p.event,
+        "channel": p.channel,
+        "user": p.user,
+        "reaction": p.reaction,
+        "item_type": p.item_type,
+        "item_user": p.item_user,
+        "item_ts": p.item_ts,
+        "event_ts": p.event_ts,
+    });
+    serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())
+}
+
 fn render_event_json(p: &ParsedEvent, safety: Option<&Classification>) -> String {
     let value = serde_json::json!({
         "event": p.event,
@@ -308,79 +370,104 @@ async fn handle_push_event(
         }
     };
 
-    let parsed = match event.event {
+    match event.event {
         SlackEventCallbackBody::Message(m) => {
-            let text = m
-                .content
-                .as_ref()
-                .and_then(|c| c.text.clone())
-                .unwrap_or_default();
-            let channel = m
-                .origin
-                .channel
-                .as_ref()
-                .map(|c| c.to_string())
-                .unwrap_or_default();
-            let ts = m.origin.ts.to_string();
-            let thread_ts = m
-                .origin
-                .thread_ts
-                .as_ref()
-                .map(|t| t.to_string())
-                .unwrap_or_default();
-            let user = m
-                .sender
-                .user
-                .as_ref()
-                .map(|u| u.to_string())
-                .unwrap_or_default();
-            let bot_id = m
-                .sender
-                .bot_id
-                .as_ref()
-                .map(|b| b.to_string())
-                .unwrap_or_default();
-            let subtype = m
-                .subtype
-                .as_ref()
-                .map(|s| format!("{s:?}"))
-                .unwrap_or_default();
-            info!(
-                kind = "slack.event_received",
-                channel = %channel,
-                user = %user,
-                bot_id = %bot_id,
-                ts = %ts,
-                thread_ts = %thread_ts,
-                subtype = %subtype,
-                text = %text,
-                "slack message event received"
-            );
-            let p = parse_message_event(&m, state.self_bot_id.as_ref());
-            if p.is_none() {
-                info!(
-                    kind = "slack.message_dropped",
-                    channel = %channel,
-                    ts = %ts,
-                    subtype = %subtype,
-                    "slack message dropped at triage"
-                );
-            }
-            p
+            handle_message_event(state, m).await;
+        }
+        SlackEventCallbackBody::ReactionAdded(r) => {
+            handle_reaction_event(
+                state,
+                "reaction_added",
+                &r.user,
+                &r.reaction,
+                r.item_user.as_ref(),
+                &r.item,
+                &r.event_ts,
+            )
+            .await;
+        }
+        SlackEventCallbackBody::ReactionRemoved(r) => {
+            handle_reaction_event(
+                state,
+                "reaction_removed",
+                &r.user,
+                &r.reaction,
+                r.item_user.as_ref(),
+                &r.item,
+                &r.event_ts,
+            )
+            .await;
         }
         other => {
             info!(
                 kind = "slack.other_event",
                 event = %format!("{other:?}"),
-                "non-message slack event received"
+                "non-handled slack event received"
             );
-            None
         }
-    };
+    }
+    Ok(())
+}
 
-    let parsed = match parsed {
+async fn handle_message_event(state: &SharedState, m: SlackMessageEvent) {
+    let text = m
+        .content
+        .as_ref()
+        .and_then(|c| c.text.clone())
+        .unwrap_or_default();
+    let channel = m
+        .origin
+        .channel
+        .as_ref()
+        .map(|c| c.to_string())
+        .unwrap_or_default();
+    let ts = m.origin.ts.to_string();
+    let thread_ts = m
+        .origin
+        .thread_ts
+        .as_ref()
+        .map(|t| t.to_string())
+        .unwrap_or_default();
+    let user = m
+        .sender
+        .user
+        .as_ref()
+        .map(|u| u.to_string())
+        .unwrap_or_default();
+    let bot_id = m
+        .sender
+        .bot_id
+        .as_ref()
+        .map(|b| b.to_string())
+        .unwrap_or_default();
+    let subtype = m
+        .subtype
+        .as_ref()
+        .map(|s| format!("{s:?}"))
+        .unwrap_or_default();
+    info!(
+        kind = "slack.event_received",
+        channel = %channel,
+        user = %user,
+        bot_id = %bot_id,
+        ts = %ts,
+        thread_ts = %thread_ts,
+        subtype = %subtype,
+        text = %text,
+        "slack message event received"
+    );
+    let parsed = match parse_message_event(&m, state.self_bot_id.as_ref()) {
         Some(p) => p,
-        None => return Ok(()),
+        None => {
+            info!(
+                kind = "slack.message_dropped",
+                channel = %channel,
+                ts = %ts,
+                subtype = %subtype,
+                "slack message dropped at triage"
+            );
+            return;
+        }
     };
 
     // Run injection classifier on the parsed text.
@@ -420,7 +507,7 @@ async fn handle_push_event(
                 "failed to post safety alert"
             );
         }
-        return Ok(());
+        return;
     }
 
     let safety_annotation = if classification.score >= state.config.injection_warn_threshold {
@@ -439,7 +526,58 @@ async fn handle_push_event(
             "failed to forward to agent-salon"
         );
     }
-    Ok(())
+}
+
+async fn handle_reaction_event(
+    state: &SharedState,
+    event: &'static str,
+    user: &SlackUserId,
+    reaction: &SlackReactionName,
+    item_user: Option<&SlackUserId>,
+    item: &SlackReactionsItem,
+    event_ts: &SlackTs,
+) {
+    info!(
+        kind = "slack.reaction_received",
+        event = %event,
+        user = %user,
+        reaction = %reaction.0,
+        item_user = item_user.map(|u| u.to_string()).unwrap_or_default(),
+        event_ts = %event_ts,
+        "slack reaction event received"
+    );
+    let parsed = match parse_reaction_event(
+        event,
+        user,
+        reaction,
+        item_user,
+        item,
+        event_ts,
+        state.self_user_id.as_ref(),
+    ) {
+        Some(p) => p,
+        None => {
+            info!(
+                kind = "slack.reaction_dropped",
+                event = %event,
+                user = %user,
+                reaction = %reaction.0,
+                "slack reaction dropped at triage"
+            );
+            return;
+        }
+    };
+
+    let content = render_reaction_json(&parsed);
+    if let Err(e) = notify_salon(state, content).await {
+        warn!(
+            kind = "salon.forward_failed",
+            target = %state.config.salon_target,
+            url = %state.config.salon_notify_url,
+            error = %format!("{e:?}"),
+            "failed to forward to agent-salon"
+        );
+    }
 }
 
 /// Post a brief alert to the same thread as the offending message.
@@ -506,19 +644,16 @@ async fn post_handler(
     if let Some(t) = req.thread_ts {
         req_msg = req_msg.with_thread_ts(SlackTs::from(t));
     }
-    session
-        .chat_post_message(&req_msg)
-        .await
-        .map_err(|e| {
-            error!(
-                kind = "slack.post_failed",
-                channel = %channel,
-                thread_ts = %thread_ts,
-                error = %format!("{e:?}"),
-                "chat.postMessage failed"
-            );
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}"))
-        })?;
+    session.chat_post_message(&req_msg).await.map_err(|e| {
+        error!(
+            kind = "slack.post_failed",
+            channel = %channel,
+            thread_ts = %thread_ts,
+            error = %format!("{e:?}"),
+            "chat.postMessage failed"
+        );
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}"))
+    })?;
     info!(
         kind = "slack.message_posted",
         channel = %channel,
@@ -528,11 +663,100 @@ async fn post_handler(
     Ok(StatusCode::OK)
 }
 
+#[derive(Deserialize)]
+struct ReactRequest {
+    channel: String,
+    ts: String,
+    name: String,
+}
+
+async fn react_handler(
+    State(state): State<SharedState>,
+    Json(req): Json<ReactRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let channel = req.channel.clone();
+    let ts = req.ts.clone();
+    let name = req.name.clone();
+    info!(
+        kind = "react.requested",
+        channel = %channel,
+        ts = %ts,
+        name = %name,
+        "reactions.add request received"
+    );
+    let session = state.slack.open_session(&state.config.bot_token);
+    let api_req = SlackApiReactionsAddRequest::new(
+        SlackChannelId::from(req.channel),
+        SlackReactionName::from(req.name),
+        SlackTs::from(req.ts),
+    );
+    session.reactions_add(&api_req).await.map_err(|e| {
+        error!(
+            kind = "slack.react_failed",
+            channel = %channel,
+            ts = %ts,
+            name = %name,
+            error = %format!("{e:?}"),
+            "reactions.add failed"
+        );
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}"))
+    })?;
+    info!(
+        kind = "slack.reaction_added",
+        channel = %channel,
+        ts = %ts,
+        name = %name,
+        "reaction added"
+    );
+    Ok(StatusCode::OK)
+}
+
+async fn unreact_handler(
+    State(state): State<SharedState>,
+    Json(req): Json<ReactRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let channel = req.channel.clone();
+    let ts = req.ts.clone();
+    let name = req.name.clone();
+    info!(
+        kind = "unreact.requested",
+        channel = %channel,
+        ts = %ts,
+        name = %name,
+        "reactions.remove request received"
+    );
+    let session = state.slack.open_session(&state.config.bot_token);
+    let api_req = SlackApiReactionsRemoveRequest::new(SlackReactionName::from(req.name))
+        .with_channel(SlackChannelId::from(req.channel))
+        .with_timestamp(SlackTs::from(req.ts));
+    session.reactions_remove(&api_req).await.map_err(|e| {
+        error!(
+            kind = "slack.unreact_failed",
+            channel = %channel,
+            ts = %ts,
+            name = %name,
+            error = %format!("{e:?}"),
+            "reactions.remove failed"
+        );
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}"))
+    })?;
+    info!(
+        kind = "slack.reaction_removed",
+        channel = %channel,
+        ts = %ts,
+        name = %name,
+        "reaction removed"
+    );
+    Ok(StatusCode::OK)
+}
+
 async fn run_http_server(state: SharedState) {
     let bind = state.config.http_bind.clone();
     let port = state.config.http_port;
     let app = Router::new()
         .route("/post", post(post_handler))
+        .route("/react", post(react_handler))
+        .route("/unreact", post(unreact_handler))
         .with_state(state);
     let listener = TcpListener::bind((bind.as_str(), port))
         .await
@@ -590,6 +814,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .auth_test()
         .await?;
     let self_bot_id = auth.bot_id.clone();
+    let self_user_id = Some(auth.user_id.clone());
     info!(
         kind = "startup.auth_test_ok",
         user_id = %auth.user_id,
@@ -621,6 +846,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         config: config.clone(),
         http,
         self_bot_id,
+        self_user_id,
         classifier,
     };
     SHARED
@@ -632,7 +858,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let callbacks = SlackSocketModeListenerCallbacks::new().with_push_events(handle_push_event);
     let env = Arc::new(
-        SlackClientEventsListenerEnvironment::new(slack_client.clone()).with_error_handler(on_error),
+        SlackClientEventsListenerEnvironment::new(slack_client.clone())
+            .with_error_handler(on_error),
     );
     let listener =
         SlackClientSocketModeListener::new(&SlackClientSocketModeConfig::new(), env, callbacks);

@@ -83,11 +83,8 @@ impl Classifier {
             "stream": false,
         });
         let url = format!("{}/api/chat", self.ollama_url.trim_end_matches('/'));
-        let resp = tokio::time::timeout(
-            self.timeout,
-            self.http.post(&url).json(&req).send(),
-        )
-        .await??;
+        let resp =
+            tokio::time::timeout(self.timeout, self.http.post(&url).json(&req).send()).await??;
         let body: OllamaChatResponse = resp.error_for_status()?.json().await?;
         let output = body.message.content.trim().to_lowercase();
         debug!(model = %self.ollama_model, output = %output, "ollama raw output");
@@ -151,10 +148,7 @@ impl Classifier {
     ) -> Result<(f64, String), Box<dyn std::error::Error + Send + Sync>> {
         let output = tokio::time::timeout(
             self.timeout,
-            Command::new("claude")
-                .arg("-p")
-                .arg(prompt)
-                .output(),
+            Command::new("claude").arg("-p").arg(prompt).output(),
         )
         .await??;
 

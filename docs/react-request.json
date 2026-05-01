@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "react-request.json",
+  "title": "ReactRequest",
+  "description": "Body of the POST /react and POST /unreact requests accepted by agent-salon-slack. Targets a specific message; file reactions are not supported.",
+  "type": "object",
+  "required": ["channel", "ts", "name"],
+  "additionalProperties": false,
+  "properties": {
+    "channel": {
+      "type": "string",
+      "description": "Slack channel ID, e.g. \"C0123456789\"."
+    },
+    "ts": {
+      "type": "string",
+      "description": "ts of the message to react to (or unreact from)."
+    },
+    "name": {
+      "type": "string",
+      "description": "Emoji name without colons, e.g. \"thumbsup\"."
+    }
+  }
+}
