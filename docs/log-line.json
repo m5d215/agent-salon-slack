@@ -18,10 +18,18 @@
     { "$ref": "#/$defs/SlackAlertFailed" },
     { "$ref": "#/$defs/SlackMessagePosted" },
     { "$ref": "#/$defs/SlackPostFailed" },
+    { "$ref": "#/$defs/SlackReactionReceived" },
+    { "$ref": "#/$defs/SlackReactionDropped" },
+    { "$ref": "#/$defs/SlackReactionAdded" },
+    { "$ref": "#/$defs/SlackReactionRemoved" },
+    { "$ref": "#/$defs/SlackReactFailed" },
+    { "$ref": "#/$defs/SlackUnreactFailed" },
     { "$ref": "#/$defs/SafetyClassified" },
     { "$ref": "#/$defs/SalonForwarded" },
     { "$ref": "#/$defs/SalonForwardFailed" },
     { "$ref": "#/$defs/PostRequested" },
+    { "$ref": "#/$defs/ReactRequested" },
+    { "$ref": "#/$defs/UnreactRequested" },
     { "$ref": "#/$defs/CallbackError" },
     { "$ref": "#/$defs/InternalSharedStateUninitialized" },
     { "$ref": "#/$defs/InternalPanic" },
@@ -327,6 +335,124 @@
       "unevaluatedProperties": false
     },
 
+    "SlackReactionReceived": {
+      "title": "slack.reaction_received",
+      "description": "An inbound Slack reaction event was observed (logged before triage).",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "slack reaction event received" },
+        "kind": { "const": "slack.reaction_received" },
+        "event": {
+          "type": "string",
+          "enum": ["reaction_added", "reaction_removed"]
+        },
+        "user": {
+          "type": "string",
+          "description": "Slack user ID of the reactor."
+        },
+        "reaction": {
+          "type": "string",
+          "description": "Reaction name without colons, e.g. \"thumbsup\"."
+        },
+        "item_user": {
+          "type": "string",
+          "description": "Slack user ID of the message author the reaction targets. Empty when Slack did not provide one."
+        },
+        "event_ts": { "type": "string" }
+      },
+      "required": ["event", "user", "reaction", "item_user", "event_ts"],
+      "unevaluatedProperties": false
+    },
+
+    "SlackReactionDropped": {
+      "title": "slack.reaction_dropped",
+      "description": "An inbound reaction event was dropped at triage and not forwarded.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "slack reaction dropped at triage" },
+        "kind": { "const": "slack.reaction_dropped" },
+        "event": {
+          "type": "string",
+          "enum": ["reaction_added", "reaction_removed"]
+        },
+        "user": { "type": "string" },
+        "reaction": { "type": "string" }
+      },
+      "required": ["event", "user", "reaction"],
+      "unevaluatedProperties": false
+    },
+
+    "SlackReactionAdded": {
+      "title": "slack.reaction_added",
+      "description": "An outbound reaction requested via /react was applied via reactions.add.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "reaction added" },
+        "kind": { "const": "slack.reaction_added" },
+        "channel": { "type": "string" },
+        "ts": { "type": "string" },
+        "name": {
+          "type": "string",
+          "description": "Reaction name without colons, e.g. \"thumbsup\"."
+        }
+      },
+      "required": ["channel", "ts", "name"],
+      "unevaluatedProperties": false
+    },
+
+    "SlackReactionRemoved": {
+      "title": "slack.reaction_removed",
+      "description": "An outbound reaction removal requested via /unreact was applied via reactions.remove.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "reaction removed" },
+        "kind": { "const": "slack.reaction_removed" },
+        "channel": { "type": "string" },
+        "ts": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["channel", "ts", "name"],
+      "unevaluatedProperties": false
+    },
+
+    "SlackReactFailed": {
+      "title": "slack.react_failed",
+      "description": "Adding a reaction via reactions.add failed.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "ERROR" },
+        "message": { "const": "reactions.add failed" },
+        "kind": { "const": "slack.react_failed" },
+        "channel": { "type": "string" },
+        "ts": { "type": "string" },
+        "name": { "type": "string" },
+        "error": { "type": "string" }
+      },
+      "required": ["channel", "ts", "name", "error"],
+      "unevaluatedProperties": false
+    },
+
+    "SlackUnreactFailed": {
+      "title": "slack.unreact_failed",
+      "description": "Removing a reaction via reactions.remove failed.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "ERROR" },
+        "message": { "const": "reactions.remove failed" },
+        "kind": { "const": "slack.unreact_failed" },
+        "channel": { "type": "string" },
+        "ts": { "type": "string" },
+        "name": { "type": "string" },
+        "error": { "type": "string" }
+      },
+      "required": ["channel", "ts", "name", "error"],
+      "unevaluatedProperties": false
+    },
+
     "SafetyClassified": {
       "title": "safety.classified",
       "description": "The classifier produced a verdict for an inbound message that passed triage. Always emitted, including for blocked messages (followed by `slack.message_blocked` in that case).",
@@ -396,6 +522,41 @@
         "text": { "type": "string" }
       },
       "required": ["channel", "thread_ts", "text"],
+      "unevaluatedProperties": false
+    },
+
+    "ReactRequested": {
+      "title": "react.requested",
+      "description": "A POST /react request was received.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "reactions.add request received" },
+        "kind": { "const": "react.requested" },
+        "channel": { "type": "string" },
+        "ts": { "type": "string" },
+        "name": {
+          "type": "string",
+          "description": "Reaction name without colons, e.g. \"thumbsup\"."
+        }
+      },
+      "required": ["channel", "ts", "name"],
+      "unevaluatedProperties": false
+    },
+
+    "UnreactRequested": {
+      "title": "unreact.requested",
+      "description": "A POST /unreact request was received.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "reactions.remove request received" },
+        "kind": { "const": "unreact.requested" },
+        "channel": { "type": "string" },
+        "ts": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["channel", "ts", "name"],
       "unevaluatedProperties": false
     },
 
