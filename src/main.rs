@@ -19,6 +19,7 @@ struct Config {
     http_port: u16,
     ollama_url: String,
     ollama_model: String,
+    injection_enabled: bool,
     injection_block_threshold: f64,
     injection_warn_threshold: f64,
     injection_timeout: Duration,
@@ -40,6 +41,9 @@ impl Config {
         let http_bind = opt_or("AGENT_SALON_SLACK_HTTP_BIND", "127.0.0.1");
         let ollama_url = opt_or("OLLAMA_URL", "http://localhost:11434");
         let ollama_model = opt_or("OLLAMA_MODEL", "llama-guard3:1b");
+        let injection_enabled: bool = opt_or("INJECTION_ENABLED", "true")
+            .parse()
+            .map_err(|e| format!("INJECTION_ENABLED: {e}"))?;
         let injection_block_threshold: f64 = opt_or("INJECTION_BLOCK_THRESHOLD", "0.7")
             .parse()
             .map_err(|e| format!("INJECTION_BLOCK_THRESHOLD: {e}"))?;
@@ -59,6 +63,7 @@ impl Config {
             http_port: port,
             ollama_url,
             ollama_model,
+            injection_enabled,
             injection_block_threshold,
             injection_warn_threshold,
             injection_timeout: Duration::from_secs(injection_timeout_secs),
@@ -470,6 +475,20 @@ async fn handle_message_event(state: &SharedState, m: SlackMessageEvent) {
         }
     };
 
+    if !state.config.injection_enabled {
+        let content = render_event_json(&parsed, None);
+        if let Err(e) = notify_salon(state, content).await {
+            warn!(
+                kind = "salon.forward_failed",
+                target = %state.config.salon_target,
+                url = %state.config.salon_notify_url,
+                error = %format!("{e:?}"),
+                "failed to forward to agent-salon"
+            );
+        }
+        return;
+    }
+
     // Run injection classifier on the parsed text.
     let classification = state.classifier.classify(&parsed.text).await;
     info!(
@@ -833,6 +852,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     });
     info!(
         kind = "startup.classifier_ready",
+        enabled = config.injection_enabled,
         ollama_url = %config.ollama_url,
         ollama_model = %config.ollama_model,
         block_threshold = config.injection_block_threshold,

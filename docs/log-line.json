@@ -79,12 +79,16 @@
 
     "StartupClassifierReady": {
       "title": "startup.classifier_ready",
-      "description": "Prompt-injection classifier finished initialising.",
+      "description": "Prompt-injection classifier finished initialising. When `enabled` is false the threshold/model fields still report what *would* be used; the classifier is just never called at runtime.",
       "allOf": [{ "$ref": "#/$defs/Base" }],
       "properties": {
         "level": { "const": "INFO" },
         "message": { "const": "classifier ready" },
         "kind": { "const": "startup.classifier_ready" },
+        "enabled": {
+          "type": "boolean",
+          "description": "= INJECTION_ENABLED. When false, inbound messages are forwarded without being classified."
+        },
         "ollama_url": { "type": "string" },
         "ollama_model": { "type": "string" },
         "block_threshold": { "type": "number", "minimum": 0, "maximum": 1 },
@@ -92,6 +96,7 @@
         "timeout_secs": { "type": "integer", "minimum": 0 }
       },
       "required": [
+        "enabled",
         "ollama_url",
         "ollama_model",
         "block_threshold",

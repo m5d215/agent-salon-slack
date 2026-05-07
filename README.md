@@ -49,6 +49,7 @@ cargo run
 | `AGENT_SALON_SLACK_HTTP_BIND` | - | Default `127.0.0.1`. Address to bind the `/post` listener to. Set to a Tailscale IP (or `0.0.0.0` if the network is already gated) to accept requests from other hosts. **`/post` is unauthenticated**, so anyone who can reach the port can post to Slack — keep the listener behind a trusted network. |
 | `OLLAMA_URL` | - | Default `http://localhost:11434` |
 | `OLLAMA_MODEL` | - | Default `llama-guard3:1b` |
+| `INJECTION_ENABLED` | - | Default `true`. Set to `false` to bypass classification — see [Prompt-injection detection](#prompt-injection-detection). |
 | `INJECTION_BLOCK_THRESHOLD` | - | Default `0.7`. Block at or above this score. |
 | `INJECTION_WARN_THRESHOLD` | - | Default `0.5`. Add suspicious annotation at or above this score. |
 | `INJECTION_TIMEOUT_SECS` | - | Default `30`. Timeout for Ollama / claude -p. |
@@ -121,6 +122,10 @@ For messages that pass triage, agent-salon-slack runs a **local LLM injection
 classifier on Ollama** before forwarding to agent-salon. Detection runs on
 the Rust side so the receiving Claude Code session's context is never
 contaminated with the suspect text.
+
+Set `INJECTION_ENABLED=false` to bypass classification — every inbound
+message is forwarded with `safety: null` and the Rust-side block guarantee
+is off. Only disable on trusted channels.
 
 ### Flow
 
