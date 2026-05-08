@@ -769,6 +769,48 @@ async fn unreact_handler(
     Ok(StatusCode::OK)
 }
 
+#[derive(Deserialize)]
+struct DeleteRequest {
+    channel: String,
+    ts: String,
+}
+
+async fn delete_handler(
+    State(state): State<SharedState>,
+    Json(req): Json<DeleteRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let channel = req.channel.clone();
+    let ts = req.ts.clone();
+    info!(
+        kind = "delete.requested",
+        channel = %channel,
+        ts = %ts,
+        "chat.delete request received"
+    );
+    let session = state.slack.open_session(&state.config.bot_token);
+    let api_req = SlackApiChatDeleteRequest::new(
+        SlackChannelId::from(req.channel),
+        SlackTs::from(req.ts),
+    );
+    session.chat_delete(&api_req).await.map_err(|e| {
+        error!(
+            kind = "slack.delete_failed",
+            channel = %channel,
+            ts = %ts,
+            error = %format!("{e:?}"),
+            "chat.delete failed"
+        );
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("{e}"))
+    })?;
+    info!(
+        kind = "slack.message_deleted",
+        channel = %channel,
+        ts = %ts,
+        "deleted from slack"
+    );
+    Ok(StatusCode::OK)
+}
+
 async fn run_http_server(state: SharedState) {
     let bind = state.config.http_bind.clone();
     let port = state.config.http_port;
@@ -776,6 +818,7 @@ async fn run_http_server(state: SharedState) {
         .route("/post", post(post_handler))
         .route("/react", post(react_handler))
         .route("/unreact", post(unreact_handler))
+        .route("/delete", post(delete_handler))
         .with_state(state);
     let listener = TcpListener::bind((bind.as_str(), port))
         .await
