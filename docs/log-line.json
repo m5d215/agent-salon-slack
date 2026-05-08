@@ -18,6 +18,8 @@
     { "$ref": "#/$defs/SlackAlertFailed" },
     { "$ref": "#/$defs/SlackMessagePosted" },
     { "$ref": "#/$defs/SlackPostFailed" },
+    { "$ref": "#/$defs/SlackMessageDeleted" },
+    { "$ref": "#/$defs/SlackDeleteFailed" },
     { "$ref": "#/$defs/SlackReactionReceived" },
     { "$ref": "#/$defs/SlackReactionDropped" },
     { "$ref": "#/$defs/SlackReactionAdded" },
@@ -28,6 +30,7 @@
     { "$ref": "#/$defs/SalonForwarded" },
     { "$ref": "#/$defs/SalonForwardFailed" },
     { "$ref": "#/$defs/PostRequested" },
+    { "$ref": "#/$defs/DeleteRequested" },
     { "$ref": "#/$defs/ReactRequested" },
     { "$ref": "#/$defs/UnreactRequested" },
     { "$ref": "#/$defs/CallbackError" },
@@ -340,6 +343,37 @@
       "unevaluatedProperties": false
     },
 
+    "SlackMessageDeleted": {
+      "title": "slack.message_deleted",
+      "description": "An outbound delete requested via /delete was applied via chat.delete.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "deleted from slack" },
+        "kind": { "const": "slack.message_deleted" },
+        "channel": { "type": "string" },
+        "ts": { "type": "string" }
+      },
+      "required": ["channel", "ts"],
+      "unevaluatedProperties": false
+    },
+
+    "SlackDeleteFailed": {
+      "title": "slack.delete_failed",
+      "description": "Deleting a message via chat.delete failed.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "ERROR" },
+        "message": { "const": "chat.delete failed" },
+        "kind": { "const": "slack.delete_failed" },
+        "channel": { "type": "string" },
+        "ts": { "type": "string" },
+        "error": { "type": "string" }
+      },
+      "required": ["channel", "ts", "error"],
+      "unevaluatedProperties": false
+    },
+
     "SlackReactionReceived": {
       "title": "slack.reaction_received",
       "description": "An inbound Slack reaction event was observed (logged before triage).",
@@ -527,6 +561,21 @@
         "text": { "type": "string" }
       },
       "required": ["channel", "thread_ts", "text"],
+      "unevaluatedProperties": false
+    },
+
+    "DeleteRequested": {
+      "title": "delete.requested",
+      "description": "A POST /delete request was received.",
+      "allOf": [{ "$ref": "#/$defs/Base" }],
+      "properties": {
+        "level": { "const": "INFO" },
+        "message": { "const": "chat.delete request received" },
+        "kind": { "const": "delete.requested" },
+        "channel": { "type": "string" },
+        "ts": { "type": "string" }
+      },
+      "required": ["channel", "ts"],
       "unevaluatedProperties": false
     },
 

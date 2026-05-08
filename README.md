@@ -103,6 +103,17 @@ JSON Schemas live in [`docs/`](docs/).
 target a specific message (`channel` + `ts`); file reactions are not
 exposed.
 
+### `POST /delete` — Claude Code session → agent-salon-slack
+
+| | |
+|---|---|
+| URL | `http://127.0.0.1:{AGENT_SALON_SLACK_HTTP_PORT}/delete` |
+| Body | [`docs/delete-request.json`](docs/delete-request.json) |
+| Response | `200 OK` on success; `500` with the error string on failure |
+
+Calls `chat.delete`. Only messages posted by this bot can be deleted —
+the bot token has no permission to remove user messages.
+
 ### `POST /notify` — agent-salon-slack → agent-salon
 
 | | |

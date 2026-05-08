@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "delete-request.json",
+  "title": "DeleteRequest",
+  "description": "Body of the POST /delete request accepted by agent-salon-slack. Targets a specific message; only messages posted by this bot can be deleted (chat.delete with a bot token).",
+  "type": "object",
+  "required": ["channel", "ts"],
+  "additionalProperties": false,
+  "properties": {
+    "channel": {
+      "type": "string",
+      "description": "Slack channel ID, e.g. \"C0123456789\"."
+    },
+    "ts": {
+      "type": "string",
+      "description": "ts of the message to delete."
+    }
+  }
+}
